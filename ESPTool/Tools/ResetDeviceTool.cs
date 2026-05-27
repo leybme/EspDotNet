@@ -17,7 +17,7 @@ namespace EspDotNet.Tools
 
         public async Task ResetAsync(CancellationToken token = default)
         {
-            await _communicator.ExecutePinSequence(_resetDeviceSequence, token);
+            await _communicator.ExecutePinSequence(_resetDeviceSequence, token).ConfigureAwait(false);
         }
     }
 }

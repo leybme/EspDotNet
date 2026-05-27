@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-    <PackageId>ESPTool</PackageId>
+    <PackageId>EspDotNet</PackageId>
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
@@ -13,10 +13,6 @@
 		<LangVersion>latest</LangVersion>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 	</PropertyGroup>
-
-	<ItemGroup>
-	  <Compile Remove="Tools\GetAddressesTool.cs" />
-	</ItemGroup>
 
 	<ItemGroup>
 	  <None Remove="Resources\Config\Devices\ESP32.json" />
@@ -65,8 +61,6 @@
 
 	<ItemGroup>
 		<PackageReference Include="System.IO.Ports" Version="5.0.1" />
-		<PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <None Include="..\README.md" Pack="true" PackagePath="README.md" />
-    <None Include="Tools\GetAddressesTool.cs" />
 	</ItemGroup>
 </Project>

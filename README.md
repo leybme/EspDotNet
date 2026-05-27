@@ -1,8 +1,8 @@
-﻿# ESPTool - ESP32 Flashing and Bootloader Tool
+﻿# EspDotNet - ESP32 Flashing and Bootloader Tool
 
-**ESPTool** is a native C# implementation of Espressif's ESP tool ([esptool](https://github.com/espressif/esptool)). This library was created to enable direct interaction with ESP devices (such as ESP32) without relying on external applications. It provides a rich set of tools for flashing firmware, erasing flash memory, detecting chip types, and managing bootloader and softloader communication—all via serial communication.
+**EspDotNet** is a native C# implementation of Espressif's ESP tool ([esptool](https://github.com/espressif/esptool)). This library was created to enable direct interaction with ESP devices (such as ESP32) without relying on external applications. It provides a rich set of tools for flashing firmware, erasing flash memory, detecting chip types, and managing bootloader and softloader communication—all via serial communication.
 
-[![NuGet](https://img.shields.io/nuget/v/ESPTool.svg)](https://www.nuget.org/packages/ESPTool)
+[![NuGet](https://img.shields.io/nuget/v/EspDotNet.svg)](https://www.nuget.org/packages/EspDotNet)
 
 > **Looking for a GUI tool?** Check out the [ESPFlasher GUI tool on GitHub](https://github.com/KooleControls/ESPFlasher).
 
@@ -64,9 +64,43 @@ Each upload tool encapsulates a specific firmware upload mechanism:
 
 ## Example
 
-The main `ESPTool` class serves as a toolbox for creating and retrieving the various tools needed to interact with an ESP device. Its design forces the user to explicitly handle the device state by passing the appropriate loader and chip type when needed, reducing the risk of operating on a disconnected or unsupported device.
+The main `EspToolbox` class serves as a toolbox for creating and retrieving the various tools needed to interact with an ESP device. Its design forces the user to explicitly handle the device state by passing the appropriate loader and chip type when needed, reducing the risk of operating on a disconnected or unsupported device.
 
-For usage examples, see [Example.cs](./ESPTool/Example.cs).
+The following walks through detecting a chip, loading the stub (softloader) and flashing a firmware image:
+
+```csharp
+using EspDotNet;
+using EspDotNet.Tools.Firmware;
+using System.IO.Ports;
+
+var toolbox = new EspToolbox();
+
+// 1. Open the serial port and wrap it in a communicator (the port is not owned by the library).
+using var port = new SerialPort("COM3", 115200);
+port.Open();
+var communicator = toolbox.CreateCommunicator(port);
+
+// 2. Enter the ROM bootloader and synchronize.
+var bootloader = await toolbox.CreateBootloaderTool(communicator).StartBootloaderAsync();
+
+// 3. Detect the chip and resolve its device config.
+var deviceConfig = await toolbox.CreateChipTypeDetectTool(bootloader).DetectAndGetDeviceConfig(default);
+
+// 4. Upload the matching stub loader into RAM and run it (the softloader adds extra commands).
+var stub = DefaultFirmwareProviders.GetSoftloaderForDevice(deviceConfig.ChipType);
+var ramUpload = toolbox.CreateRamUploadTool(bootloader, deviceConfig);
+var softLoader = await toolbox.CreateSoftLoaderTool(communicator, ramUpload).StartAsync(stub);
+
+// 5. Flash your firmware (provide your own IFirmwareProvider) using the compressed flash path.
+IFirmwareProvider firmware = /* your firmware image */;
+var flashTool = toolbox.CreateUploadFlashDeflatedTool(softLoader, deviceConfig);
+var uploader = toolbox.CreateFirmwareUploadTool(flashTool);
+uploader.Progress = new Progress<float>(p => Console.WriteLine($"{p:P0}"));
+await uploader.UploadFirmwareAsync(firmware, default);
+
+// 6. Reset the device to run the new firmware.
+await toolbox.CreateResetTool(communicator).ResetAsync();
+```
 
 ## License
 

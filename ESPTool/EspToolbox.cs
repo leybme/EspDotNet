@@ -8,11 +8,11 @@ using System.IO.Ports;
 
 namespace EspDotNet
 {
-    public class ESPToolbox
+    public class EspToolbox
     {
         public ESPToolConfig Config { get; private set; }
-        public ESPToolbox() => Config = ConfigProvider.LoadDefaultConfig();
-        public ESPToolbox(ESPToolConfig config) => Config = config;
+        public EspToolbox() => Config = ConfigProvider.LoadDefaultConfig();
+        public EspToolbox(ESPToolConfig config) => Config = config;
 
 
         public Communicator CreateCommunicator(SerialPort port) => new Communicator(port);

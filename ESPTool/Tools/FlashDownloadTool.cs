@@ -1,10 +1,7 @@
 ﻿using EspDotNet.Communication;
-using EspDotNet.Config;
+using EspDotNet.Exceptions;
 using EspDotNet.Loaders.SoftLoader;
-using EspDotNet.Utils;
-using System.Net;
 using System.Security.Cryptography;
-using System.Threading;
 
 namespace EspDotNet.Tools
 {
@@ -31,7 +28,7 @@ namespace EspDotNet.Tools
         public async Task ReadFlashAsync(uint address, uint size, Stream outputStream, CancellationToken token)
         {
             var flashStream = OpenFlashReadStream(address, size);
-            await flashStream.CopyToAsync(outputStream, token);
+            await flashStream.CopyToAsync(outputStream, token).ConfigureAwait(false);
         }
 
         public class FlashReadStream : Stream
@@ -57,7 +54,7 @@ namespace EspDotNet.Tools
                 int bytesReturned = 0;
 
                 bytesReturned += ReadFromBuffer(buffer, offset, count);
-                bytesReturned += await ReadFromDeviceAsync(buffer, offset + bytesReturned, count - bytesReturned, cancellationToken);
+                bytesReturned += await ReadFromDeviceAsync(buffer, offset + bytesReturned, count - bytesReturned, cancellationToken).ConfigureAwait(false);
 
                 return bytesReturned;
             }
@@ -82,13 +79,13 @@ namespace EspDotNet.Tools
                 toRead = Math.Min(toRead, remainingBytes);
 
                 _md5.Initialize();
-                await _tool._softLoader.FlashReadBeginAsync(_position, (uint)toRead, _tool.BlockSize, _tool.MaxInFlight, cancellationToken);
+                await _tool._softLoader.FlashReadBeginAsync(_position, (uint)toRead, _tool.BlockSize, _tool.MaxInFlight, cancellationToken).ConfigureAwait(false);
 
                 int bytesCopiedToCaller = 0;
 
                 while (bytesCopiedToCaller < count && toRead > 0)
                 {
-                    var frame = await _tool._communicator.ReadFrameAsync(cancellationToken);
+                    var frame = await _tool._communicator.ReadFrameAsync(cancellationToken).ConfigureAwait(false);
                     if (frame?.Data == null)
                         throw new IOException("Failed to receive flash data frame.");
 
@@ -107,12 +104,12 @@ namespace EspDotNet.Tools
                     _position += (uint)frame.Data.Length;
                     toRead -= frame.Data.Length;
 
-                    await _tool._softLoader.FlashReadAckAsync(_position, cancellationToken);
+                    await _tool._softLoader.FlashReadAckAsync(_position, cancellationToken).ConfigureAwait(false);
                     _tool.Progress.Report((float)_position / _totalSize);
                 }
 
                 _md5.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                await VerifyMd5Async(_md5, cancellationToken);
+                await VerifyMd5Async(_md5, cancellationToken).ConfigureAwait(false);
 
                 return bytesCopiedToCaller;
             }
@@ -120,9 +117,9 @@ namespace EspDotNet.Tools
 
             private async Task VerifyMd5Async(MD5 md5, CancellationToken token)
             {
-                var hashFrame = await _tool._communicator.ReadFrameAsync(token);
+                var hashFrame = await _tool._communicator.ReadFrameAsync(token).ConfigureAwait(false);
                 var computedHash = md5.Hash ?? throw new InvalidOperationException("Hash not computed yet.");
-                var expectedHash = hashFrame?.Data ?? throw new Exception("Expected hash frame");
+                var expectedHash = hashFrame?.Data ?? throw new EspProtocolException("Expected MD5 hash frame after flash read.");
 
                 for (int i = 0; i < 16; i++)
                 {

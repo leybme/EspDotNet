@@ -1,5 +1,6 @@
 ﻿using EspDotNet.Communication;
 using EspDotNet.Config;
+using EspDotNet.Exceptions;
 using EspDotNet.Loaders.ESP32BootLoader;
 using System.Text.RegularExpressions;
 using System.Text;
@@ -20,17 +21,17 @@ namespace EspDotNet.Tools
         public async Task<ESP32BootLoader> StartBootloaderAsync(CancellationToken token = default)
         {
             // Start bootloader
-            await _communicator.ExecutePinSequence(_bootloaderSequence, token);
+            await _communicator.ExecutePinSequence(_bootloaderSequence, token).ConfigureAwait(false);
 
             // Check bootloader message
-            if (!await TryReadBootStartup(token))
-                throw new Exception("BootLoader message not verified");
+            if (!await TryReadBootStartup(token).ConfigureAwait(false))
+                throw new EspProtocolException("BootLoader message not verified");
 
             // Instantiate loader and synchronize
             var bootloader = new ESP32BootLoader(_communicator);
 
-            if (!await Synchronize(bootloader, token))
-                throw new Exception("Failed to synchronize with bootloader");
+            if (!await Synchronize(bootloader, token).ConfigureAwait(false))
+                throw new EspProtocolException("Failed to synchronize with bootloader");
 
             return bootloader;
         }
@@ -38,7 +39,7 @@ namespace EspDotNet.Tools
         private async Task<bool> TryReadBootStartup(CancellationToken token)
         {
             var buffer = new byte[4096];
-            var read = await _communicator.ReadRawAsync(buffer, token);
+            var read = await _communicator.ReadRawAsync(buffer, token).ConfigureAwait(false);
             if (read > 0)
             {
                 var data = new byte[read];
@@ -66,7 +67,7 @@ namespace EspDotNet.Tools
 
                 try
                 {
-                    if(await loader.SynchronizeAsync(cts.Token))
+                    if(await loader.SynchronizeAsync(cts.Token).ConfigureAwait(false))
                         return true;
                 }
                 catch (OperationCanceledException)

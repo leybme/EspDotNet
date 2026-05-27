@@ -22,7 +22,7 @@ namespace EspDotNet.Tools
         {
             // Calculate blocks
             uint blocks = (size + BlockSize - 1) / BlockSize;
-            await _loader.FlashBeginAsync(size, blocks, BlockSize, offset, token);
+            await _loader.FlashBeginAsync(size, blocks, BlockSize, offset, token).ConfigureAwait(false);
 
             // Send data
             for (uint i = 0; i < blocks; i++)
@@ -31,11 +31,11 @@ namespace EspDotNet.Tools
                 uint len = Math.Min(BlockSize, size - srcIndex);
 
                 byte[] buffer = new byte[len];
-                int bytesRead = await data.ReadAsync(buffer, 0, (int)len, token);
-                if (bytesRead != len)
-                    break;
+                // ReadExactlyAsync fills the whole buffer, looping over short reads, and throws
+                // EndOfStreamException if the stream ends before 'len' bytes (the caller promised 'size').
+                await data.ReadExactlyAsync(buffer.AsMemory(0, (int)len), token).ConfigureAwait(false);
 
-                await _loader.FlashDataAsync(buffer, i, token);
+                await _loader.FlashDataAsync(buffer, i, token).ConfigureAwait(false);
                 Progress.Report((float)(i + 1) / blocks);
             }
 
@@ -45,10 +45,10 @@ namespace EspDotNet.Tools
 
         public async Task UploadAndExecute(Stream uncompressedData, uint offset, uint unCompressedSize, uint entryPoint, CancellationToken token)
         {
-            await Upload(uncompressedData, offset, unCompressedSize, token);
+            await Upload(uncompressedData, offset, unCompressedSize, token).ConfigureAwait(false);
 
             // End memory transfer, 0 means execute, confusing
-            await _loader.FlashEndAsync(0, entryPoint, token);
+            await _loader.FlashEndAsync(0, entryPoint, token).ConfigureAwait(false);
         }
     }
 }

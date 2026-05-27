@@ -18,7 +18,7 @@ namespace EspDotNet.Tools
             if (newBaud == currentBaud)
                 return;
 
-            await _loader.ChangeBaudAsync(newBaud, currentBaud, token);
+            await _loader.ChangeBaudAsync(newBaud, currentBaud, token).ConfigureAwait(false);
         }
     }
 

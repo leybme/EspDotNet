@@ -22,7 +22,7 @@ namespace EspDotNet.Tools
             // Calculate blocks
             uint blockSize = (uint)_deviceConfig.FlashBlockSize;
             uint blocks = (size + blockSize - 1) / blockSize;
-            await _loader.MemBeginAsync(size, blocks, blockSize, offset, token);
+            await _loader.MemBeginAsync(size, blocks, blockSize, offset, token).ConfigureAwait(false);
 
             // Send data
             for (uint i = 0; i < blocks; i++)
@@ -31,11 +31,10 @@ namespace EspDotNet.Tools
                 uint len = Math.Min(blockSize, size - srcIndex);
 
                 byte[] buffer = new byte[len];
-                int bytesRead = await data.ReadAsync(buffer, 0, (int)len, token);
-                if (bytesRead != len)
-                    break;
+                // Fill the whole block, looping over short reads; throws if the stream ends early.
+                await data.ReadExactlyAsync(buffer.AsMemory(0, (int)len), token).ConfigureAwait(false);
 
-                await _loader.MemDataAsync(buffer, i, token);
+                await _loader.MemDataAsync(buffer, i, token).ConfigureAwait(false);
                 Progress.Report((float)(i + 1) / blocks);
             }
 
@@ -45,10 +44,10 @@ namespace EspDotNet.Tools
 
         public async Task UploadAndExecute(Stream uncompressedData, uint offset, uint unCompressedSize, uint entryPoint, CancellationToken token)
         {
-            await Upload(uncompressedData, offset, unCompressedSize, token);
+            await Upload(uncompressedData, offset, unCompressedSize, token).ConfigureAwait(false);
 
             // End memory transfer, 0 means execute, confusing
-            await _loader.MemEndAsync(0, entryPoint, token);
+            await _loader.MemEndAsync(0, entryPoint, token).ConfigureAwait(false);
         }
     }
 

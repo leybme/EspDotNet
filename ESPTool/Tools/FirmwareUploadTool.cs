@@ -36,7 +36,7 @@ namespace EspDotNet.Tools
             for (int i = 0; i < segments.Count; i++)
             {
                 var segment = segments[i];
-                var dataStream = await segment.GetStreamAsync(token);
+                var dataStream = await segment.GetStreamAsync(token).ConfigureAwait(false);
                 var offset = segment.Offset;
                 var size = segment.Size;
                 float segmentWeight = (float)size / totalSize; // Fractional contribution of this segment
@@ -51,11 +51,11 @@ namespace EspDotNet.Tools
                 bool isLastSegment = (i == segments.Count - 1);
                 if (executeOnLast && isLastSegment)
                 {
-                    await _uploadTool.UploadAndExecute(dataStream, offset, size, firmwareProvider.EntryPoint, token);
+                    await _uploadTool.UploadAndExecute(dataStream, offset, size, firmwareProvider.EntryPoint, token).ConfigureAwait(false);
                 }
                 else
                 {
-                    await _uploadTool.Upload(dataStream, offset, size, token);
+                    await _uploadTool.Upload(dataStream, offset, size, token).ConfigureAwait(false);
                 }
 
                 progressAccumulated += segmentWeight;

@@ -1,4 +1,6 @@
-﻿using System.Reflection;
+﻿using EspDotNet.Exceptions;
+using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -26,8 +28,9 @@ namespace EspDotNet.Config
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load tool config: {ex.Message}");
-                return new ESPToolConfig();
+                // The default config is embedded in this assembly; a failure here indicates a
+                // packaging/build problem rather than a recoverable runtime condition.
+                throw new EspException($"Failed to load the embedded default ESPToolConfig ('{resourceName}').", ex);
             }
         }
 
@@ -46,7 +49,8 @@ namespace EspDotNet.Config
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Failed to load {resourceName}: {ex.Message}");
+                    // A single malformed device file should not prevent the rest from loading.
+                    Debug.WriteLine($"Failed to load device config '{resourceName}': {ex.Message}");
                 }
             }
 

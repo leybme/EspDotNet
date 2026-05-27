@@ -18,9 +18,20 @@ namespace EspDotNet.Communication
     {
         private const byte FrameDelimiter = 0xC0;
         private const byte EscapeByte = 0xDB;
-        private const byte EscapeFrameDelimiter = 0xDC; 
+        private const byte EscapeFrameDelimiter = 0xDC;
         private const byte EscapeEscapeByte = 0xDD;
         private readonly SerialPort _serialPort;
+
+        // Buffered reads so we pull a chunk from the stream at a time instead of polling per byte.
+        private readonly byte[] _readBuffer = new byte[1024];
+        private int _readBufferPos;
+        private int _readBufferLen;
+
+        /// <summary>
+        /// Maximum time to wait for any serial data while reading a frame. Prevents an indefinite
+        /// hang if the device never responds. A cancellation token still cancels immediately.
+        /// </summary>
+        public TimeSpan ReadTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
         public SlipFraming(SerialPort serialPort)
         {
@@ -31,9 +42,9 @@ namespace EspDotNet.Communication
         {
             byte[] escapedFrame = EscapeFrame(frame);
             _serialPort.BaseStream.WriteByte(FrameDelimiter); // Start of frame
-            await _serialPort.BaseStream.WriteAsync(escapedFrame, 0, escapedFrame.Length, token);
+            await _serialPort.BaseStream.WriteAsync(escapedFrame, 0, escapedFrame.Length, token).ConfigureAwait(false);
             _serialPort.BaseStream.WriteByte(FrameDelimiter); // end of frame
-            await _serialPort.BaseStream.FlushAsync(token); // Ensure all data is sent
+            await _serialPort.BaseStream.FlushAsync(token).ConfigureAwait(false); // Ensure all data is sent
         }
 
         public async Task<Frame?> ReadFrameAsync(CancellationToken token)
@@ -43,7 +54,7 @@ namespace EspDotNet.Communication
             // In slipframing, all delimiters are replaced, so we can record everything between delimeters and decode it later
             while (true)
             {
-                byte currentByte = await ReadByte(token);
+                byte currentByte = await ReadByte(token).ConfigureAwait(false);
 
                 if (currentByte == FrameDelimiter)
                 {
@@ -60,14 +71,34 @@ namespace EspDotNet.Communication
 
         private async Task<byte> ReadByte(CancellationToken token)
         {
-            // Wait for data
-            while (_serialPort.BytesToRead == 0)
+            if (_readBufferPos >= _readBufferLen)
+                await FillReadBuffer(token).ConfigureAwait(false);
+
+            return _readBuffer[_readBufferPos++];
+        }
+
+        // Reads a chunk from the stream into the internal buffer, applying ReadTimeout while still
+        // honoring the caller's cancellation token.
+        private async Task FillReadBuffer(CancellationToken token)
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeoutCts.CancelAfter(ReadTimeout);
+
+            try
             {
-                // Prevent busy waiting
-                await Task.Delay(10, token);
+                _readBufferLen = await _serialPort.BaseStream
+                    .ReadAsync(_readBuffer.AsMemory(0, _readBuffer.Length), timeoutCts.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Timed out waiting for serial data after {ReadTimeout.TotalMilliseconds:N0} ms.");
             }
 
-            return (byte)_serialPort.ReadByte();
+            _readBufferPos = 0;
+
+            if (_readBufferLen == 0)
+                throw new EndOfStreamException("Serial stream closed while reading a frame.");
         }
 
         private byte[] EscapeFrame(Frame frame)

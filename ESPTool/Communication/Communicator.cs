@@ -1,10 +1,6 @@
 ﻿using EspDotNet.Config;
-using Microsoft.Extensions.Logging;
 using System;
-using System.Diagnostics;
 using System.IO.Ports;
-using System.Text.RegularExpressions;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -46,7 +42,7 @@ namespace EspDotNet.Communication
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the cancellation token.</exception>
         public async Task WriteFrameAsync(Frame frame, CancellationToken token)
         {
-            await _slipFraming.WriteFrameAsync(frame, token);
+            await _slipFraming.WriteFrameAsync(frame, token).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -58,7 +54,7 @@ namespace EspDotNet.Communication
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the cancellation token.</exception>
         public async Task<Frame?> ReadFrameAsync(CancellationToken token)
         {
-            return await _slipFraming.ReadFrameAsync(token);
+            return await _slipFraming.ReadFrameAsync(token).ConfigureAwait(false);
         }
 
         public async Task ExecutePinSequence(List<PinSequenceStep> sequence, CancellationToken token)
@@ -71,17 +67,22 @@ namespace EspDotNet.Communication
                 if (step.Rts != null)
                 {
                     _serialPort.RtsEnable = step.Rts.Value;
+
+                    // Windows-only quirk: setting RtsEnable on the Windows serial driver can also
+                    // clear the DTR line. Re-asserting the current DtrEnable value forces the driver
+                    // to restore DTR so the two control lines stay independent (matches esptool's
+                    // _setDTR/_setRTS handling on Windows).
                     if (OperatingSystem.IsWindows())
                         _serialPort.DtrEnable = _serialPort.DtrEnable;
                 }
 
-                await Task.Delay(step.Delay, token);
+                await Task.Delay(step.Delay, token).ConfigureAwait(false);
             }
         }
 
         public async Task<int> ReadRawAsync(byte[] buffer, CancellationToken token)
         {
-            return await _serialPort.BaseStream.ReadAsync(buffer, 0, buffer.Length, token);
+            return await _serialPort.BaseStream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -93,12 +94,12 @@ namespace EspDotNet.Communication
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the cancellation token.</exception>
         public async Task WriteAsync(byte[] data, CancellationToken token)
         {
-            await _serialPort.BaseStream.WriteAsync(data, 0, data.Length, token);
+            await _serialPort.BaseStream.WriteAsync(data, 0, data.Length, token).ConfigureAwait(false);
         }
 
         internal async Task FlushAsync(CancellationToken token)
         {
-            await _serialPort.BaseStream.FlushAsync(token);
+            await _serialPort.BaseStream.FlushAsync(token).ConfigureAwait(false);
         }
     }
 }

@@ -19,11 +19,11 @@ namespace EspDotNet.Tools
         {
             // Upload the StubLoader
             var firmwareTool = new FirmwareUploadTool(_uploadTool);
-            await firmwareTool.UploadFirmwareAndExecuteAsync(firmwareProvider, token);
+            await firmwareTool.UploadFirmwareAndExecuteAsync(firmwareProvider, token).ConfigureAwait(false);
 
             // Instantiate loader and synchronize
             SoftLoader softLoader = new SoftLoader(_communicator);
-            await softLoader.WaitForOHAIAsync(token);
+            await softLoader.WaitForOHAIAsync(token).ConfigureAwait(false);
             return softLoader;
         }
     }
