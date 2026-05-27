@@ -31,19 +31,31 @@ namespace EspDotNet.Loaders.ESP32BootLoader
             // Write the frame to the communicator
             await _communicator.WriteFrameAsync(requestFrame, token).ConfigureAwait(false);
 
-            // Read the response frame
-            Frame responseFrame = await _communicator.ReadFrameAsync(token).ConfigureAwait(false)
-                ?? throw new EspProtocolException($"No response frame received for command 0x{requestCommand.Command:X2}.");
-
-            // Convert the response frame back to a ResponseCommand
-            var response = FrameToResponse(responseFrame);
-
-            // Check
-            if (response.Command != requestCommand.Command)
+            // The ROM loader emits several leftover SYNC replies, and DiscardInBuffer cannot catch
+            // the ones still in flight, so the first frame after a command is often a stale 0x08
+            // response. Like esptool, read past any frame whose command does not match the request
+            // (or that is malformed) until the matching response arrives. The per-read timeout in
+            // SlipFraming bounds this loop, so a genuinely missing response still surfaces.
+            while (true)
             {
-                throw new EspProtocolException($"Response command 0x{response.Command:X2} did not match request command 0x{requestCommand.Command:X2}.");
+                Frame responseFrame = await _communicator.ReadFrameAsync(token).ConfigureAwait(false)
+                    ?? throw new EspProtocolException($"No response frame received for command 0x{requestCommand.Command:X2}.");
+
+                ResponseCommand response;
+                try
+                {
+                    response = FrameToResponse(responseFrame);
+                }
+                catch (EspProtocolException)
+                {
+                    continue; // malformed/foreign frame (e.g. a truncated stale reply); keep reading
+                }
+
+                if (response.Command != requestCommand.Command)
+                    continue; // stale/foreign frame (e.g. a leftover SYNC reply); keep reading
+
+                return response;
             }
-            return response;
         }
 
         private static Frame RequestToFrame(RequestCommand command)

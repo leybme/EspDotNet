@@ -79,22 +79,27 @@ namespace EspDotNet.Communication
 
         // Reads a chunk from the stream into the internal buffer, applying ReadTimeout while still
         // honoring the caller's cancellation token.
+        //
+        // We poll BytesToRead rather than awaiting BaseStream.ReadAsync: on Windows the SerialPort
+        // async read does not honor cancellation of an in-flight read, so a missing byte (e.g. a
+        // dropped ROM SYNC reply) would block forever and neither ReadTimeout nor the caller's
+        // token would fire. Polling lets us honor both reliably across platforms.
         private async Task FillReadBuffer(CancellationToken token)
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            timeoutCts.CancelAfter(ReadTimeout);
+            var stopwatch = Stopwatch.StartNew();
 
-            try
+            while (_serialPort.BytesToRead == 0)
             {
-                _readBufferLen = await _serialPort.BaseStream
-                    .ReadAsync(_readBuffer.AsMemory(0, _readBuffer.Length), timeoutCts.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested)
-            {
-                throw new TimeoutException($"Timed out waiting for serial data after {ReadTimeout.TotalMilliseconds:N0} ms.");
+                token.ThrowIfCancellationRequested();
+
+                if (stopwatch.Elapsed >= ReadTimeout)
+                    throw new TimeoutException($"Timed out waiting for serial data after {ReadTimeout.TotalMilliseconds:N0} ms.");
+
+                await Task.Delay(5, token).ConfigureAwait(false);
             }
 
+            int available = Math.Min(_serialPort.BytesToRead, _readBuffer.Length);
+            _readBufferLen = _serialPort.Read(_readBuffer, 0, available);
             _readBufferPos = 0;
 
             if (_readBufferLen == 0)
