@@ -1,11 +1,15 @@
 ﻿using EspDotNet.Commands;
 using EspDotNet.Communication;
+using EspDotNet.Exceptions;
 
 namespace EspDotNet.Loaders.SoftLoader
 {
 
     public class SoftLoaderCommandExecutor
     {
+        // Response header layout: [direction(1)][command(1)][size(2)][value(4)] = 8 bytes, then payload.
+        private const int HeaderSize = 8;
+
         protected readonly Communicator _communicator;
 
         public SoftLoaderCommandExecutor(Communicator communicator)
@@ -17,6 +21,7 @@ namespace EspDotNet.Loaders.SoftLoader
         /// Sends a request frame and waits for a response frame.
         /// </summary>
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the token.</exception>
+        /// <exception cref="EspProtocolException">Thrown if no frame is received, the frame is malformed, or the response command does not match the request.</exception>
         public async Task<ResponseCommand> ExecuteCommandAsync(RequestCommand requestCommand, CancellationToken token)
         {
             _communicator.ClearBuffer();
@@ -25,10 +30,11 @@ namespace EspDotNet.Loaders.SoftLoader
             Frame requestFrame = RequestToFrame(requestCommand);
 
             // Write the frame to the communicator
-            await _communicator.WriteFrameAsync(requestFrame, token);
+            await _communicator.WriteFrameAsync(requestFrame, token).ConfigureAwait(false);
 
             // Read the response frame
-            Frame responseFrame = await _communicator.ReadFrameAsync(token) ?? throw new Exception("No frame received");
+            Frame responseFrame = await _communicator.ReadFrameAsync(token).ConfigureAwait(false)
+                ?? throw new EspProtocolException($"No response frame received for command 0x{requestCommand.Command:X2}.");
 
             // Convert the response frame back to a ResponseCommand
             var response = FrameToResponse(responseFrame);
@@ -36,7 +42,7 @@ namespace EspDotNet.Loaders.SoftLoader
             // Check
             if (response.Command != requestCommand.Command)
             {
-                throw new Exception("Response didnt match");
+                throw new EspProtocolException($"Response command 0x{response.Command:X2} did not match request command 0x{requestCommand.Command:X2}.");
             }
             return response;
         }
@@ -58,26 +64,30 @@ namespace EspDotNet.Loaders.SoftLoader
 
         private static ResponseCommand FrameToResponse(Frame frame)
         {
-            ResponseCommand response = new ResponseCommand();
-            try
+            byte[] data = frame.Data;
+            if (data.Length < HeaderSize)
+                throw new EspProtocolException($"Response frame too short: {data.Length} bytes (need at least {HeaderSize}).");
+
+            ResponseCommand response = new ResponseCommand
             {
-                response.Direction = frame.Data[0];
-                response.Command = frame.Data[1];
-                response.Size = BitConverter.ToUInt16(frame.Data, 2);
-                response.Value = BitConverter.ToUInt32(frame.Data, 4);
-                response.Payload = frame.Data.Skip(8).ToArray();
+                Direction = data[0],
+                Command = data[1],
+                Size = BitConverter.ToUInt16(data, 2),
+                Value = BitConverter.ToUInt32(data, 4),
+                Payload = data.Skip(HeaderSize).ToArray(),
+            };
 
-                //These 2 fields are switched around when compared to the documentation.
-                response.Success = response.Payload[response.Size - 1] == 0;
-                SoftLoaderResponseStatus status = (SoftLoaderResponseStatus)response.Payload[response.Size - 2];
-                response.Error = GeneralizeResponseStatus(status);
+            // The soft loader appends a 2-byte status trailer. These 2 fields are switched around
+            // when compared to the documentation: payload[Size-1] is the success byte and
+            // payload[Size-2] is the error code.
+            if (response.Size < 2 || response.Payload.Length < response.Size)
+                throw new EspProtocolException($"Response payload too short for status trailer (size field={response.Size}, payload={response.Payload.Length}).");
 
-                if (response.Error != ResponseCommandStatus.NoError)
-                {
-                    response.Success = false;
-                }
-            }
-            catch
+            response.Success = response.Payload[response.Size - 1] == 0;
+            SoftLoaderResponseStatus status = (SoftLoaderResponseStatus)response.Payload[response.Size - 2];
+            response.Error = GeneralizeResponseStatus(status);
+
+            if (response.Error != ResponseCommandStatus.NoError)
             {
                 response.Success = false;
             }

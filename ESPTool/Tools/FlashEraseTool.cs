@@ -12,7 +12,7 @@ namespace EspDotNet.Tools
         }
         public async Task EraseFlashAsync(CancellationToken token)
         {
-            await _loader.EraseFlashAsync(token);
+            await _loader.EraseFlashAsync(token).ConfigureAwait(false);
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using EspDotNet.Config;
+using EspDotNet.Exceptions;
 using EspDotNet.Loaders;
 using EspDotNet.Loaders.SoftLoader;
 
@@ -18,7 +19,7 @@ namespace EspDotNet.Tools
         {
             if (!_deviceConfig.EFlags.TryGetValue(key, out EFuseMapping? mapping))
             {
-                throw new Exception($"EFuse mapping not found for key {key}");
+                throw new EspException($"EFuse mapping not found for key {key}");
             }
 
             // Calculate how many 4-byte registers we need to read.
@@ -28,7 +29,7 @@ namespace EspDotNet.Tools
             for (int i = 0; i < registersNeeded; i++)
             {
                 uint address = mapping.Address + (uint)(i * 4);
-                uint regValue = await _loader.ReadRegisterAsync(address, token);
+                uint regValue = await _loader.ReadRegisterAsync(address, token).ConfigureAwait(false);
                 // Convert the register value to bytes (assuming little-endian format).
                 byte[] regBytes = BitConverter.GetBytes(regValue);
                 resultBytes.AddRange(regBytes);

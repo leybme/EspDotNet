@@ -1,8 +1,15 @@
-﻿namespace EspDotNet.Commands
+namespace EspDotNet.Commands
 {
     public class RequestCommandBuilder
     {
+        // The checksum seed defined by the esptool serial protocol.
+        private const byte ChecksumSeed = 0xEF;
+        // FLASH_DATA/MEM_DATA payloads start with a 16-byte header (4 x uint32); the checksum is
+        // computed only over the data that follows it.
+        private const int ChecksumDataOffset = 16;
+
         private readonly RequestCommand _request;
+        private readonly List<byte> _payload = new();
 
         public RequestCommandBuilder()
         {
@@ -24,8 +31,7 @@
         /// </summary>
         public RequestCommandBuilder AppendPayload(byte[] payloadPart)
         {
-            _request.Payload = _request.Payload.Concat(payloadPart).ToArray();
-            _request.Size = (ushort)_request.Payload.Length;
+            _payload.AddRange(payloadPart);
             return this;
         }
 
@@ -54,6 +60,9 @@
         /// </summary>
         public RequestCommand Build()
         {
+            _request.Payload = _payload.ToArray();
+            _request.Size = (ushort)_payload.Count;
+
             if (_request.ChecksumRequired)
             {
                 CalculateChecksum();
@@ -66,9 +75,9 @@
         /// </summary>
         private void CalculateChecksum()
         {
-            _request.Checksum = 0xEF;
+            _request.Checksum = ChecksumSeed;
 
-            for (int i = 16; i < _request.Payload.Length; i++)
+            for (int i = ChecksumDataOffset; i < _request.Payload.Length; i++)
             {
                 _request.Checksum ^= _request.Payload[i];
             }

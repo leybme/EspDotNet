@@ -1,75 +1,24 @@
 ﻿using EspDotNet.Config;
-using Microsoft.Extensions.Logging;
 using System;
-using System.Diagnostics;
 using System.IO.Ports;
-using System.Text.RegularExpressions;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace EspDotNet.Communication
 {
-    public class Communicator : IDisposable
+    public class Communicator
     {
         private readonly SerialPort _serialPort;
         private readonly SlipFraming _slipFraming;
 
-        public Communicator()
+        /// <summary>
+        /// Initializes a new Communicator using an existing open SerialPort.
+        /// The Communicator does not take ownership of the port and will not open, close or dispose it.
+        /// </summary>
+        public Communicator(SerialPort serialPort)
         {
-            _serialPort = new SerialPort();
+            _serialPort = serialPort ?? throw new ArgumentNullException(nameof(serialPort));
             _slipFraming = new SlipFraming(_serialPort);
-        }
-
-        /// <summary>
-        /// Opens the serial port with the specified port name and baud rate.
-        /// </summary>
-        /// <param name="portName">The name of the serial port to open.</param>
-        /// <param name="baudRate">The baud rate for the communication.</param>
-        public void OpenSerial(string portName, int baudRate)
-        {
-            if (_serialPort.IsOpen && (_serialPort.PortName != portName || _serialPort.BaudRate != baudRate))
-            {
-                _serialPort.Close();
-            }
-
-            if (!_serialPort.IsOpen)
-            {
-                _serialPort.PortName = portName;
-                _serialPort.BaudRate = baudRate;
-                _serialPort.Open();
-            }
-        }
-
-        /// <summary>
-        /// Closes the serial port.
-        /// </summary>
-        public void CloseSerial()
-        {
-            if (_serialPort.IsOpen)
-            {
-                _serialPort.Close();
-            }
-        }
-
-        /// <summary>
-        /// Gets the current baud rate of the serial port.
-        /// </summary>
-        /// <returns>The baud rate of the serial port.</returns>
-        public int GetBaudRate() => _serialPort.BaudRate;
-
-        /// <summary>
-        /// Changes the baud rate of the serial port.
-        /// </summary>
-        /// <param name="baudRate">The new baud rate for the communication.</param>
-        public void ChangeBaudRate(int baudRate)
-        {
-            if (_serialPort.IsOpen)
-                _serialPort.Close();
-
-            _serialPort.BaudRate = baudRate;
-            _serialPort.Open();
-            
         }
 
         /// <summary>
@@ -80,6 +29,7 @@ namespace EspDotNet.Communication
             if (_serialPort.IsOpen)
             {
                 _serialPort.DiscardInBuffer();
+                _serialPort.DiscardOutBuffer();
             }
         }
 
@@ -92,7 +42,7 @@ namespace EspDotNet.Communication
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the cancellation token.</exception>
         public async Task WriteFrameAsync(Frame frame, CancellationToken token)
         {
-            await _slipFraming.WriteFrameAsync(frame, token);
+            await _slipFraming.WriteFrameAsync(frame, token).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -104,7 +54,7 @@ namespace EspDotNet.Communication
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the cancellation token.</exception>
         public async Task<Frame?> ReadFrameAsync(CancellationToken token)
         {
-            return await _slipFraming.ReadFrameAsync(token);
+            return await _slipFraming.ReadFrameAsync(token).ConfigureAwait(false);
         }
 
         public async Task ExecutePinSequence(List<PinSequenceStep> sequence, CancellationToken token)
@@ -117,17 +67,22 @@ namespace EspDotNet.Communication
                 if (step.Rts != null)
                 {
                     _serialPort.RtsEnable = step.Rts.Value;
+
+                    // Windows-only quirk: setting RtsEnable on the Windows serial driver can also
+                    // clear the DTR line. Re-asserting the current DtrEnable value forces the driver
+                    // to restore DTR so the two control lines stay independent (matches esptool's
+                    // _setDTR/_setRTS handling on Windows).
                     if (OperatingSystem.IsWindows())
                         _serialPort.DtrEnable = _serialPort.DtrEnable;
                 }
 
-                await Task.Delay(step.Delay, token);
+                await Task.Delay(step.Delay, token).ConfigureAwait(false);
             }
         }
 
         public async Task<int> ReadRawAsync(byte[] buffer, CancellationToken token)
         {
-            return await _serialPort.BaseStream.ReadAsync(buffer, 0, buffer.Length, token);
+            return await _serialPort.BaseStream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -139,25 +94,12 @@ namespace EspDotNet.Communication
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the cancellation token.</exception>
         public async Task WriteAsync(byte[] data, CancellationToken token)
         {
-            await _serialPort.BaseStream.WriteAsync(data, 0, data.Length, token);
-        }
-
-
-        /// <summary>
-        /// Disposes the serial port and associated resources.
-        /// </summary>
-        public void Dispose()
-        {
-            if (_serialPort.IsOpen)
-            {
-                _serialPort.Close();
-            }
-            _serialPort.Dispose();
+            await _serialPort.BaseStream.WriteAsync(data, 0, data.Length, token).ConfigureAwait(false);
         }
 
         internal async Task FlushAsync(CancellationToken token)
         {
-            await _serialPort.BaseStream.FlushAsync(token);
+            await _serialPort.BaseStream.FlushAsync(token).ConfigureAwait(false);
         }
     }
 }

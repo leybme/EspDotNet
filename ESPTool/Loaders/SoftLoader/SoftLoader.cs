@@ -1,11 +1,32 @@
-﻿using EspDotNet.Commands;
+using EspDotNet.Commands;
 using EspDotNet.Communication;
-using System.Diagnostics;
+using EspDotNet.Exceptions;
 
 namespace EspDotNet.Loaders.SoftLoader
 {
+    // Command bytes follow the esptool serial protocol and the stub flasher:
+    // https://docs.espressif.com/projects/esptool/en/latest/esp32/advanced-topics/serial-protocol.html
     public class SoftLoader : ILoader
     {
+        // Shared with the ROM loader
+        private const byte CmdFlashBegin = 0x02;
+        private const byte CmdFlashData = 0x03;
+        private const byte CmdFlashEnd = 0x04;
+        private const byte CmdMemBegin = 0x05;
+        private const byte CmdMemEnd = 0x06;
+        private const byte CmdMemData = 0x07;
+        private const byte CmdReadReg = 0x0A;
+        private const byte CmdChangeBaudRate = 0x0F;
+        // Stub-only commands
+        private const byte CmdFlashDeflBegin = 0x10;
+        private const byte CmdFlashDeflData = 0x11;
+        private const byte CmdFlashDeflEnd = 0x12;
+        private const byte CmdSpiFlashMd5 = 0x13;
+        private const byte CmdEraseFlash = 0xD0;
+        private const byte CmdFlashReadBegin = 0xD2;
+
+        private const int Md5Length = 16;
+
         private readonly byte[] OHAI = { 0x4F, 0x48, 0x41, 0x49 };
         protected readonly Communicator _communicator;
         protected readonly SoftLoaderCommandExecutor _commandExecutor;
@@ -26,14 +47,14 @@ namespace EspDotNet.Loaders.SoftLoader
         public async Task ChangeBaudAsync(int baud, int oldBaud, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x0F)
+                .WithCommand(CmdChangeBaudRate)
                 .AppendPayload(BitConverter.GetBytes(baud))
                 .AppendPayload(BitConverter.GetBytes(oldBaud))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new InvalidOperationException("Failed to change baud rate.");
+                throw new EspCommandException(request.Command, response.Error, "ChangeBaudRate");
         }
 
         /// <summary>
@@ -43,24 +64,24 @@ namespace EspDotNet.Loaders.SoftLoader
         public async Task<byte[]> SPI_FLASH_MD5(uint address, uint size, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x13)
+                .WithCommand(CmdSpiFlashMd5)
                 .AppendPayload(BitConverter.GetBytes(address))
                 .AppendPayload(BitConverter.GetBytes(size))
                 .AppendPayload(BitConverter.GetBytes(0))
                 .AppendPayload(BitConverter.GetBytes(0))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new InvalidOperationException("Failed to compute MD5 checksum.");
+                throw new EspCommandException(request.Command, response.Error, "SPI_FLASH_MD5");
 
-            return response.Payload.Take(16).ToArray(); // Return the MD5 checksum (first 16 bytes)
+            return response.Payload.Take(Md5Length).ToArray(); // Return the MD5 checksum (first 16 bytes)
         }
 
         public async Task FlashReadBeginAsync(uint address, uint size, uint blockSize, uint inflight, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0xD2)
+                .WithCommand(CmdFlashReadBegin)
                 .AppendPayload(BitConverter.GetBytes(address))
                 .AppendPayload(BitConverter.GetBytes(size))
                 .AppendPayload(BitConverter.GetBytes(blockSize))
@@ -68,16 +89,16 @@ namespace EspDotNet.Loaders.SoftLoader
                 .Build();
 
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new InvalidOperationException("Failed to begin flash read.");
+                throw new EspCommandException(request.Command, response.Error, "FlashReadBegin");
         }
 
         public async Task FlashReadAckAsync(uint totalBytesReceived, CancellationToken token)
         {
             var ackData = BitConverter.GetBytes(totalBytesReceived);
-            await _communicator.WriteFrameAsync(new Frame(ackData), token);
-            await _communicator.FlushAsync(token);
+            await _communicator.WriteFrameAsync(new Frame(ackData), token).ConfigureAwait(false);
+            await _communicator.FlushAsync(token).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -86,16 +107,16 @@ namespace EspDotNet.Loaders.SoftLoader
         public async Task FlashDeflBeginAsync(uint size, uint blocks, uint blockSize, uint offset, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x10)
+                .WithCommand(CmdFlashDeflBegin)
                 .AppendPayload(BitConverter.GetBytes(size))
                 .AppendPayload(BitConverter.GetBytes(blocks))
                 .AppendPayload(BitConverter.GetBytes(blockSize))
                 .AppendPayload(BitConverter.GetBytes(offset))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new InvalidOperationException("Failed to begin flash with compressed data.");
+                throw new EspCommandException(request.Command, response.Error, "FlashDeflBegin");
         }
 
         /// <summary>
@@ -104,7 +125,7 @@ namespace EspDotNet.Loaders.SoftLoader
         public async Task FlashDeflDataAsync(byte[] blockData, uint seq, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x11)
+                .WithCommand(CmdFlashDeflData)
                 .RequiresChecksum()
                 .AppendPayload(BitConverter.GetBytes(blockData.Length))
                 .AppendPayload(BitConverter.GetBytes(seq))
@@ -113,9 +134,9 @@ namespace EspDotNet.Loaders.SoftLoader
                 .AppendPayload(blockData)
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new InvalidOperationException("Failed to send compressed flash data.");
+                throw new EspCommandException(request.Command, response.Error, "FlashDeflData");
         }
 
         /// <summary>
@@ -124,14 +145,14 @@ namespace EspDotNet.Loaders.SoftLoader
         public async Task FlashDeflEndAsync(uint executeFlags, uint entryPoint, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x12)
+                .WithCommand(CmdFlashDeflEnd)
                 .AppendPayload(BitConverter.GetBytes(executeFlags))
                 .AppendPayload(BitConverter.GetBytes(entryPoint))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new InvalidOperationException("Failed to end flash with compressed data.");
+                throw new EspCommandException(request.Command, response.Error, "FlashDeflEnd");
         }
 
         /// <summary>
@@ -140,12 +161,12 @@ namespace EspDotNet.Loaders.SoftLoader
         public async Task EraseFlashAsync(CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0xD0)
+                .WithCommand(CmdEraseFlash)
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new InvalidOperationException("Failed to erase flash memory.");
+                throw new EspCommandException(request.Command, response.Error, "EraseFlash");
         }
 
 
@@ -159,16 +180,16 @@ namespace EspDotNet.Loaders.SoftLoader
         public virtual async Task FlashBeginAsync(uint size, uint blocks, uint blockSize, uint offset, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x02)
+                .WithCommand(CmdFlashBegin)
                 .AppendPayload(BitConverter.GetBytes(size))
                 .AppendPayload(BitConverter.GetBytes(blocks))
                 .AppendPayload(BitConverter.GetBytes(blockSize))
                 .AppendPayload(BitConverter.GetBytes(offset))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
-            if (response.Success != true)
-                throw new Exception($"FlashBegin failed {response.Error}");
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
+            if (!response.Success)
+                throw new EspCommandException(request.Command, response.Error, "FlashBegin");
         }
 
         /// <summary>
@@ -177,7 +198,7 @@ namespace EspDotNet.Loaders.SoftLoader
         public virtual async Task FlashDataAsync(byte[] blockData, uint seq, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x03)
+                .WithCommand(CmdFlashData)
                 .RequiresChecksum()
                 .AppendPayload(BitConverter.GetBytes(blockData.Length))
                 .AppendPayload(BitConverter.GetBytes(seq))
@@ -186,9 +207,9 @@ namespace EspDotNet.Loaders.SoftLoader
                 .AppendPayload(blockData)
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
-            if (response.Success != true)
-                throw new Exception($"FlashData failed {response.Error}");
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
+            if (!response.Success)
+                throw new EspCommandException(request.Command, response.Error, "FlashData");
         }
 
         /// <summary>
@@ -197,14 +218,14 @@ namespace EspDotNet.Loaders.SoftLoader
         public virtual async Task FlashEndAsync(uint execute, uint entryPoint, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x04)
+                .WithCommand(CmdFlashEnd)
                 .AppendPayload(BitConverter.GetBytes(execute))
                 .AppendPayload(BitConverter.GetBytes(entryPoint))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
-            if (response.Success != true)
-                throw new Exception($"FlashEnd failed {response.Error}");
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
+            if (!response.Success)
+                throw new EspCommandException(request.Command, response.Error, "FlashEnd");
         }
 
 
@@ -214,16 +235,16 @@ namespace EspDotNet.Loaders.SoftLoader
         public virtual async Task MemBeginAsync(uint size, uint blocks, uint blockSize, uint offset, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x05)
+                .WithCommand(CmdMemBegin)
                 .AppendPayload(BitConverter.GetBytes(size))
                 .AppendPayload(BitConverter.GetBytes(blocks))
                 .AppendPayload(BitConverter.GetBytes(blockSize))
                 .AppendPayload(BitConverter.GetBytes(offset))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
-            if (response.Success != true)
-                throw new Exception($"MemBegin failed {response.Error}");
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
+            if (!response.Success)
+                throw new EspCommandException(request.Command, response.Error, "MemBegin");
         }
 
         /// <summary>
@@ -232,14 +253,14 @@ namespace EspDotNet.Loaders.SoftLoader
         public virtual async Task MemEndAsync(uint execute, uint entryPoint, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x06)
+                .WithCommand(CmdMemEnd)
                 .AppendPayload(BitConverter.GetBytes(execute))
                 .AppendPayload(BitConverter.GetBytes(entryPoint))
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
-            if (response.Success != true)
-                throw new Exception($"MemEnd failed {response.Error}");
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
+            if (!response.Success)
+                throw new EspCommandException(request.Command, response.Error, "MemEnd");
         }
 
         /// <summary>
@@ -248,7 +269,7 @@ namespace EspDotNet.Loaders.SoftLoader
         public virtual async Task MemDataAsync(byte[] blockData, uint seq, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-                .WithCommand(0x07)
+                .WithCommand(CmdMemData)
                 .RequiresChecksum()
                 .AppendPayload(BitConverter.GetBytes(blockData.Length))
                 .AppendPayload(BitConverter.GetBytes(seq))
@@ -257,21 +278,21 @@ namespace EspDotNet.Loaders.SoftLoader
                 .AppendPayload(blockData)
                 .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
-            if (response.Success != true)
-                throw new Exception($"MemData failed {response.Error}");
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
+            if (!response.Success)
+                throw new EspCommandException(request.Command, response.Error, "MemData");
         }
 
         public virtual async Task<uint> ReadRegisterAsync(uint address, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
-               .WithCommand(0x0a)
+               .WithCommand(CmdReadReg)
                .AppendPayload(BitConverter.GetBytes(address))
                .Build();
 
-            var response = await _commandExecutor.ExecuteCommandAsync(request, token);
-            if (response.Success != true)
-                throw new Exception($"Reading register failed {response.Error}");
+            var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
+            if (!response.Success)
+                throw new EspCommandException(request.Command, response.Error, "ReadRegister");
 
             return response.Value;
         }
@@ -284,11 +305,11 @@ namespace EspDotNet.Loaders.SoftLoader
         /// </summary>
         public async Task WaitForOHAIAsync(CancellationToken token)
         {
-            Frame? frame = await _communicator.ReadFrameAsync(token);
+            Frame? frame = await _communicator.ReadFrameAsync(token).ConfigureAwait(false);
 
             while (frame?.Data.SequenceEqual(OHAI) != true)
             {
-                frame = await _communicator.ReadFrameAsync(token);
+                frame = await _communicator.ReadFrameAsync(token).ConfigureAwait(false);
             }
         }
 

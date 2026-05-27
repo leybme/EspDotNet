@@ -17,9 +17,16 @@ namespace EspDotNet.Tools
         {
             // https://esp32.com/viewtopic.php?t=26626
             uint CHIP_DETECT_MAGIC_REG_ADDR = 0x40001000; 
-            uint id = await _loader.ReadRegisterAsync(CHIP_DETECT_MAGIC_REG_ADDR, token);
+            uint id = await _loader.ReadRegisterAsync(CHIP_DETECT_MAGIC_REG_ADDR, token).ConfigureAwait(false);
             var deviceConfig = _config.Devices.FirstOrDefault(device => device.MagicRegisterValue == id);
             return deviceConfig == null ? ChipTypes.Unknown : deviceConfig.ChipType;
+        }
+
+        public async Task<DeviceConfig> DetectAndGetDeviceConfig(CancellationToken token)
+        {
+            var chip = await DetectChipTypeAsync(token).ConfigureAwait(false);
+            return _config.Devices.FirstOrDefault(d => d.ChipType == chip)
+                ?? throw new InvalidOperationException($"No config available for {chip}");
         }
     }
 }
