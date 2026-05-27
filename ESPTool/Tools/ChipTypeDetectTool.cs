@@ -22,7 +22,7 @@ namespace EspDotNet.Tools
             return deviceConfig == null ? ChipTypes.Unknown : deviceConfig.ChipType;
         }
 
-        public async Task<DeviceConfig> DetectAndGetDeviceConfig(CancellationToken token)
+        public async Task<DeviceConfig> DetectAndGetDeviceConfigAsync(CancellationToken token)
         {
             var chip = await DetectChipTypeAsync(token).ConfigureAwait(false);
             return _config.Devices.FirstOrDefault(d => d.ChipType == chip)

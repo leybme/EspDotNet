@@ -57,7 +57,7 @@ namespace EspDotNet.Communication
             return await _slipFraming.ReadFrameAsync(token).ConfigureAwait(false);
         }
 
-        public async Task ExecutePinSequence(List<PinSequenceStep> sequence, CancellationToken token)
+        public async Task ExecutePinSequenceAsync(List<PinSequenceStep> sequence, CancellationToken token)
         {
             foreach (var step in sequence)
             {

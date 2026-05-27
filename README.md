@@ -84,28 +84,34 @@ port.Open();
 var communicator = new Communicator(port);
 
 // 2. Enter the ROM bootloader and synchronize (needs the bootloader pin sequence).
-var bootloader = await new BootloaderTool(communicator, config.BootloaderSequence)
-    .StartBootloaderAsync();
+var bootloaderTool = new BootloaderTool(communicator, config.BootloaderSequence);
+var bootloader = await bootloaderTool.StartBootloaderAsync();
 
 // 3. Detect the chip and resolve its device config.
-var deviceConfig = await new ChipTypeDetectTool(bootloader, config)
-    .DetectAndGetDeviceConfig(default);
+var chipDetectTool = new ChipTypeDetectTool(bootloader, config);
+var deviceConfig = await chipDetectTool.DetectAndGetDeviceConfigAsync(default);
 
 // 4. Upload the matching stub loader into RAM and run it (the softloader adds extra commands).
 var stub = DefaultFirmwareProviders.GetSoftloaderForDevice(deviceConfig.ChipType);
-var ramUpload = new RamUploadTool(bootloader, deviceConfig);
-var softLoader = await new SoftLoaderTool(communicator, ramUpload).StartAsync(stub);
+var ramUploadTool = new RamUploadTool(bootloader, deviceConfig);
+var softLoaderTool = new SoftLoaderTool(communicator, ramUploadTool);
+var softLoader = await softLoaderTool.StartAsync(stub);
 
 // 5. Flash your firmware (provide your own IFirmwareProvider) using the compressed flash path.
 IFirmwareProvider firmware = /* your firmware image */;
-var uploader = new FirmwareUploadTool(new FlashUploadDeflatedTool(softLoader, deviceConfig))
+
+// FirmwareUploadTool drives the segment/progress loop; it delegates the actual writing to an
+// IUploadTool - here the deflated (compressed) flash uploader.
+var deflatedUploadTool = new FlashUploadDeflatedTool(softLoader, deviceConfig);
+var firmwareUploadTool = new FirmwareUploadTool(deflatedUploadTool)
 {
     Progress = new Progress<float>(p => Console.WriteLine($"{p:P0}"))
 };
-await uploader.UploadFirmwareAsync(firmware, default);
+await firmwareUploadTool.UploadFirmwareAsync(firmware, default);
 
 // 6. Reset the device to run the new firmware (needs the reset pin sequence).
-await new ResetDeviceTool(communicator, config.ResetSequence).ResetAsync();
+var resetTool = new ResetDeviceTool(communicator, config.ResetSequence);
+await resetTool.ResetAsync();
 ```
 
 ## License

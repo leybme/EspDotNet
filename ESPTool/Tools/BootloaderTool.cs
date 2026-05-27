@@ -21,7 +21,7 @@ namespace EspDotNet.Tools
         public async Task<ESP32BootLoader> StartBootloaderAsync(CancellationToken token = default)
         {
             // Start bootloader
-            await _communicator.ExecutePinSequence(_bootloaderSequence, token).ConfigureAwait(false);
+            await _communicator.ExecutePinSequenceAsync(_bootloaderSequence, token).ConfigureAwait(false);
 
             // Check bootloader message
             if (!await TryReadBootStartup(token).ConfigureAwait(false))

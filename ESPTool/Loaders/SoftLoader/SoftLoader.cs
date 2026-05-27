@@ -61,7 +61,7 @@ namespace EspDotNet.Loaders.SoftLoader
         /// Calculates and verifies the MD5 checksum of a given flash region.
         /// </summary>
         /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the token.</exception>
-        public async Task<byte[]> SPI_FLASH_MD5(uint address, uint size, CancellationToken token)
+        public async Task<byte[]> SpiFlashMd5Async(uint address, uint size, CancellationToken token)
         {
             var request = new RequestCommandBuilder()
                 .WithCommand(CmdSpiFlashMd5)
@@ -73,7 +73,7 @@ namespace EspDotNet.Loaders.SoftLoader
 
             var response = await _commandExecutor.ExecuteCommandAsync(request, token).ConfigureAwait(false);
             if (!response.Success)
-                throw new EspCommandException(request.Command, response.Error, "SPI_FLASH_MD5");
+                throw new EspCommandException(request.Command, response.Error, "SpiFlashMd5");
 
             return response.Payload.Take(Md5Length).ToArray(); // Return the MD5 checksum (first 16 bytes)
         }

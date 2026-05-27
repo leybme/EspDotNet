@@ -51,11 +51,11 @@ namespace EspDotNet.Tools
                 bool isLastSegment = (i == segments.Count - 1);
                 if (executeOnLast && isLastSegment)
                 {
-                    await _uploadTool.UploadAndExecute(dataStream, offset, size, firmwareProvider.EntryPoint, token).ConfigureAwait(false);
+                    await _uploadTool.UploadAndExecuteAsync(dataStream, offset, size, firmwareProvider.EntryPoint, token).ConfigureAwait(false);
                 }
                 else
                 {
-                    await _uploadTool.Upload(dataStream, offset, size, token).ConfigureAwait(false);
+                    await _uploadTool.UploadAsync(dataStream, offset, size, token).ConfigureAwait(false);
                 }
 
                 progressAccumulated += segmentWeight;

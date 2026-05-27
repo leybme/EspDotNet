@@ -20,7 +20,7 @@ namespace EspDotNet.Tools
             _deviceConfig = deviceConfig;
         }
 
-        public async Task Upload(Stream uncompressedStream, uint offset, uint unCompressedSize, CancellationToken token)
+        public async Task UploadAsync(Stream uncompressedStream, uint offset, uint unCompressedSize, CancellationToken token)
         {
             MemoryStream compressedStream = new MemoryStream();
             ZlibCompressionHelper.CompressToZlibStream(uncompressedStream, compressedStream);
@@ -53,9 +53,9 @@ namespace EspDotNet.Tools
             // https://docs.espressif.com/projects/esptool/en/latest/esp32/advanced-topics/serial-protocol.html#writing-data
         }
 
-        public async Task UploadAndExecute(Stream uncompressedData, uint offset, uint unCompressedSize, uint entryPoint, CancellationToken token)
+        public async Task UploadAndExecuteAsync(Stream uncompressedData, uint offset, uint unCompressedSize, uint entryPoint, CancellationToken token)
         {
-            await Upload(uncompressedData, offset, unCompressedSize, token).ConfigureAwait(false);
+            await UploadAsync(uncompressedData, offset, unCompressedSize, token).ConfigureAwait(false);
 
             // End memory transfer, 0 means execute, confusing
             await _loader.FlashDeflEndAsync(0, entryPoint, token).ConfigureAwait(false);
