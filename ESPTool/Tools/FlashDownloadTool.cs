@@ -1,6 +1,7 @@
 ﻿using EspDotNet.Communication;
 using EspDotNet.Exceptions;
 using EspDotNet.Loaders.SoftLoader;
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace EspDotNet.Tools
@@ -10,6 +11,10 @@ namespace EspDotNet.Tools
         public IProgress<float> Progress { get; set; } = new Progress<float>();
         public uint BlockSize { get; set; } = 4096;
         public uint MaxInFlight { get; set; } = 1;
+
+        // Optional diagnostic sink for wire-level events (frame count/size/timing). Used to
+        // debug stub/protocol mismatches; safe to leave null in production.
+        public Action<string>? OnTrace { get; set; }
 
         private readonly SoftLoader _softLoader;
         private readonly Communicator _communicator;
@@ -75,51 +80,60 @@ namespace EspDotNet.Tools
                 if (remainingBytes <= 0)
                     return 0;
 
-                int toRead = Math.Max(count, (int)_tool.BlockSize);
-                toRead = Math.Min(toRead, remainingBytes);
+                // The bundled stub answers READ_FLASH by sending exactly one data frame of the
+                // requested size followed by the MD5 frame, then returns to command mode. It does
+                // not implement ack-driven streaming - sending acks here would be parsed by the
+                // stub as new (bad) commands and pollute the wire with error status frames. So
+                // we request at most BlockSize per call and let CopyToAsync loop for the rest.
+                uint thisBlock = Math.Min(_tool.BlockSize, (uint)remainingBytes);
 
                 _md5.Initialize();
-                await _tool._softLoader.FlashReadBeginAsync(_position, (uint)toRead, _tool.BlockSize, _tool.MaxInFlight, cancellationToken).ConfigureAwait(false);
+                var sw = Stopwatch.StartNew();
+                _tool.OnTrace?.Invoke($"FlashReadBegin addr=0x{_position:X} block={thisBlock} (remaining after={remainingBytes - thisBlock})");
+                await _tool._softLoader.FlashReadBeginAsync(_position, thisBlock, thisBlock, _tool.MaxInFlight, cancellationToken).ConfigureAwait(false);
+                _tool.OnTrace?.Invoke($"FlashReadBegin OK after {sw.ElapsedMilliseconds}ms");
 
-                int bytesCopiedToCaller = 0;
+                sw.Restart();
+                var frame = await _tool._communicator.ReadFrameAsync(cancellationToken).ConfigureAwait(false)
+                    ?? throw new IOException("Failed to receive flash data frame.");
+                _tool.OnTrace?.Invoke($"data frame len={frame.Data.Length} read in {sw.ElapsedMilliseconds}ms");
 
-                while (bytesCopiedToCaller < count && toRead > 0)
-                {
-                    var frame = await _tool._communicator.ReadFrameAsync(cancellationToken).ConfigureAwait(false);
-                    if (frame?.Data == null)
-                        throw new IOException("Failed to receive flash data frame.");
+                _md5.TransformBlock(frame.Data, 0, frame.Data.Length, null, 0);
 
-                    _md5.TransformBlock(frame.Data, 0, frame.Data.Length, null, 0);
+                int copyCount = Math.Min(count, frame.Data.Length);
+                Array.Copy(frame.Data, 0, buffer, offset, copyCount);
+                for (int i = copyCount; i < frame.Data.Length; i++)
+                    _buffer.Enqueue(frame.Data[i]);
 
-                    int remainingCallerBuffer = count - bytesCopiedToCaller;
-                    int copyCount = Math.Min(remainingCallerBuffer, frame.Data.Length);
-
-                    Array.Copy(frame.Data, 0, buffer, offset + bytesCopiedToCaller, copyCount);
-                    bytesCopiedToCaller += copyCount;
-
-                    // Buffer the rest if any
-                    for (int i = copyCount; i < frame.Data.Length; i++)
-                        _buffer.Enqueue(frame.Data[i]);
-
-                    _position += (uint)frame.Data.Length;
-                    toRead -= frame.Data.Length;
-
-                    await _tool._softLoader.FlashReadAckAsync(_position, cancellationToken).ConfigureAwait(false);
-                    _tool.Progress.Report((float)_position / _totalSize);
-                }
+                _position += (uint)frame.Data.Length;
+                _tool.Progress.Report((float)_position / _totalSize);
 
                 _md5.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
                 await VerifyMd5Async(_md5, cancellationToken).ConfigureAwait(false);
 
-                return bytesCopiedToCaller;
+                return copyCount;
             }
 
 
             private async Task VerifyMd5Async(MD5 md5, CancellationToken token)
             {
-                var hashFrame = await _tool._communicator.ReadFrameAsync(token).ConfigureAwait(false);
+                // After the data stream the stub sends both a final status response (~10 bytes)
+                // and the 16-byte MD5 frame. The order observed on real ESP32 hardware puts the
+                // status before the MD5, so skip past any non-16-byte frames until we find the
+                // hash. The MD5 has a fixed length, so this is unambiguous.
+                byte[]? expectedHash = null;
+                int verifyFrameIndex = 0;
+                while (expectedHash == null)
+                {
+                    var frame = await _tool._communicator.ReadFrameAsync(token).ConfigureAwait(false)
+                        ?? throw new EspProtocolException("Expected MD5 hash frame after flash read.");
+                    _tool.OnTrace?.Invoke($"post-data frame #{verifyFrameIndex++} len={frame.Data.Length} first8={(frame.Data.Length >= 8 ? BitConverter.ToString(frame.Data, 0, 8) : BitConverter.ToString(frame.Data))}");
+                    if (frame.Data.Length == 16)
+                        expectedHash = frame.Data;
+                    // Otherwise it's the trailing status response; drop it and keep reading.
+                }
+
                 var computedHash = md5.Hash ?? throw new InvalidOperationException("Hash not computed yet.");
-                var expectedHash = hashFrame?.Data ?? throw new EspProtocolException("Expected MD5 hash frame after flash read.");
 
                 for (int i = 0; i < 16; i++)
                 {

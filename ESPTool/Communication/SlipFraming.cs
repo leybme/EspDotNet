@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
@@ -26,12 +25,6 @@ namespace EspDotNet.Communication
         private readonly byte[] _readBuffer = new byte[1024];
         private int _readBufferPos;
         private int _readBufferLen;
-
-        /// <summary>
-        /// Maximum time to wait for any serial data while reading a frame. Prevents an indefinite
-        /// hang if the device never responds. A cancellation token still cancels immediately.
-        /// </summary>
-        public TimeSpan ReadTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
         public SlipFraming(SerialPort serialPort)
         {
@@ -77,24 +70,15 @@ namespace EspDotNet.Communication
             return _readBuffer[_readBufferPos++];
         }
 
-        // Reads a chunk from the stream into the internal buffer, applying ReadTimeout while still
-        // honoring the caller's cancellation token.
-        //
         // We poll BytesToRead rather than awaiting BaseStream.ReadAsync: on Windows the SerialPort
         // async read does not honor cancellation of an in-flight read, so a missing byte (e.g. a
-        // dropped ROM SYNC reply) would block forever and neither ReadTimeout nor the caller's
-        // token would fire. Polling lets us honor both reliably across platforms.
+        // dropped ROM SYNC reply) would block forever and the caller's token would not fire.
+        // Polling lets us honor cancellation reliably across platforms.
         private async Task FillReadBuffer(CancellationToken token)
         {
-            var stopwatch = Stopwatch.StartNew();
-
             while (_serialPort.BytesToRead == 0)
             {
                 token.ThrowIfCancellationRequested();
-
-                if (stopwatch.Elapsed >= ReadTimeout)
-                    throw new TimeoutException($"Timed out waiting for serial data after {ReadTimeout.TotalMilliseconds:N0} ms.");
-
                 await Task.Delay(5, token).ConfigureAwait(false);
             }
 
