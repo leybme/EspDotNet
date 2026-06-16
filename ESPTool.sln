@@ -5,6 +5,10 @@ VisualStudioVersion = 17.12.35707.178 d17.12
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EspDotNet", "ESPTool\EspDotNet.csproj", "{573E6BC7-AF1A-45EB-B682-685473F62437}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Samples", "Samples", "{007E99CE-846A-4B0B-A82C-F3B6A75AFB10}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EspFlasherWpf", "Samples\EspFlasherWpf\EspFlasherWpf.csproj", "{E0CA0BF7-D0C7-4275-B163-3ABC84F510E0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,11 +19,18 @@ Global
 		{573E6BC7-AF1A-45EB-B682-685473F62437}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{573E6BC7-AF1A-45EB-B682-685473F62437}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{573E6BC7-AF1A-45EB-B682-685473F62437}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E0CA0BF7-D0C7-4275-B163-3ABC84F510E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E0CA0BF7-D0C7-4275-B163-3ABC84F510E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E0CA0BF7-D0C7-4275-B163-3ABC84F510E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E0CA0BF7-D0C7-4275-B163-3ABC84F510E0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {41E90229-CE52-4D2B-87B0-8EBF1D0A6368}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E0CA0BF7-D0C7-4275-B163-3ABC84F510E0} = {007E99CE-846A-4B0B-A82C-F3B6A75AFB10}
 	EndGlobalSection
 EndGlobal

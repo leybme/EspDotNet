@@ -1,0 +1,56 @@
+<Window x:Class="EspFlasherWpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ESP32-C3 / ESP32-S3 Firmware Flasher" Height="380" Width="560"
+        ResizeMode="CanResizeWithGrip">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Port selection -->
+        <Label Grid.Row="0" Grid.Column="0" Content="Serial port:" VerticalAlignment="Center"/>
+        <ComboBox x:Name="PortComboBox" Grid.Row="0" Grid.Column="1" Margin="4" VerticalAlignment="Center"/>
+        <Button x:Name="RefreshPortsButton" Grid.Row="0" Grid.Column="2" Content="Refresh" Width="80" Margin="4"
+                Click="RefreshPortsButton_Click"/>
+
+        <!-- Firmware file selection -->
+        <Label Grid.Row="1" Grid.Column="0" Content="Firmware:" VerticalAlignment="Center"/>
+        <TextBox x:Name="FirmwarePathTextBox" Grid.Row="1" Grid.Column="1" Margin="4" VerticalAlignment="Center"
+                 IsReadOnly="True"/>
+        <Button x:Name="BrowseButton" Grid.Row="1" Grid.Column="2" Content="Browse..." Width="80" Margin="4"
+                Click="BrowseButton_Click"/>
+
+        <!-- Flash offset -->
+        <Label Grid.Row="2" Grid.Column="0" Content="Offset:" VerticalAlignment="Center"/>
+        <TextBox x:Name="OffsetTextBox" Grid.Row="2" Grid.Column="1" Margin="4" VerticalAlignment="Center"
+                 Text="0x10000" HorizontalAlignment="Left" Width="120"/>
+
+        <!-- Actions -->
+        <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="4">
+            <Button x:Name="UploadButton" Content="Upload" Width="90" Margin="4" Click="UploadButton_Click"/>
+            <Button x:Name="CancelButton" Content="Cancel" Width="90" Margin="4" Click="CancelButton_Click"
+                    IsEnabled="False"/>
+        </StackPanel>
+
+        <!-- Progress -->
+        <ProgressBar x:Name="UploadProgressBar" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+                     Height="18" Margin="4" Minimum="0" Maximum="100"/>
+
+        <!-- Log -->
+        <TextBox x:Name="LogTextBox" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Margin="4"
+                 IsReadOnly="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="NoWrap" FontFamily="Consolas" />
+    </Grid>
+</Window>
