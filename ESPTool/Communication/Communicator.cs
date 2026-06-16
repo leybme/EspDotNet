@@ -1,6 +1,7 @@
 ﻿using EspDotNet.Config;
 using System;
 using System.IO.Ports;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,6 +11,12 @@ namespace EspDotNet.Communication
     {
         private readonly SerialPort _serialPort;
         private readonly SlipFraming _slipFraming;
+
+        /// <summary>
+        /// Optional sink for human-readable diagnostics (pin sequence steps, etc.), useful when
+        /// debugging why a particular board does not enter the ROM bootloader.
+        /// </summary>
+        public IProgress<string> LogProgress { get; set; } = new Progress<string>();
 
         /// <summary>
         /// Initializes a new Communicator using an existing open SerialPort.
@@ -61,6 +68,8 @@ namespace EspDotNet.Communication
         {
             foreach (var step in sequence)
             {
+                LogProgress.Report($"Pin sequence step: Dtr={FormatTriState(step.Dtr)}, Rts={FormatTriState(step.Rts)}, Delay={step.Delay.TotalMilliseconds:N0}ms");
+
                 if (step.Dtr != null)
                     _serialPort.DtrEnable = step.Dtr.Value;
 
@@ -72,7 +81,7 @@ namespace EspDotNet.Communication
                     // clear the DTR line. Re-asserting the current DtrEnable value forces the driver
                     // to restore DTR so the two control lines stay independent (matches esptool's
                     // _setDTR/_setRTS handling on Windows).
-                    if (OperatingSystem.IsWindows())
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                         _serialPort.DtrEnable = _serialPort.DtrEnable;
                 }
 
@@ -101,5 +110,7 @@ namespace EspDotNet.Communication
         {
             await _serialPort.BaseStream.FlushAsync(token).ConfigureAwait(false);
         }
+
+        private static string FormatTriState(bool? value) => value is null ? "unchanged" : value.Value.ToString();
     }
 }

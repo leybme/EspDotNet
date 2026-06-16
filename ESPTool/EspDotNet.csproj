@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
     <PackageId>EspDotNet</PackageId>
-		<TargetFramework>net8.0</TargetFramework>
+		<TargetFrameworks>net8.0;net472</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<Authors>Bas Visscher</Authors>
@@ -62,5 +62,9 @@
 	<ItemGroup>
 		<PackageReference Include="System.IO.Ports" Version="5.0.1" />
     <None Include="..\README.md" Pack="true" PackagePath="README.md" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+		<PackageReference Include="System.Text.Json" Version="8.0.5" />
 	</ItemGroup>
 </Project>

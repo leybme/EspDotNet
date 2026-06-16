@@ -12,43 +12,89 @@ namespace EspDotNet.Tools
         private readonly Communicator _communicator;
         private readonly List<PinSequenceStep> _bootloaderSequence;
 
+        /// <summary>
+        /// Optional sink for human-readable diagnostics (attempt counters, the raw ROM banner
+        /// received, sync outcomes), useful when a board fails to enter the ROM bootloader.
+        /// </summary>
+        public IProgress<string> LogProgress { get; set; } = new Progress<string>();
+
         public BootloaderTool(Communicator communicator, List<PinSequenceStep> bootloaderSequence)
         {
             _communicator = communicator;
             _bootloaderSequence = bootloaderSequence;
         }
 
+        // A single auto-reset pulse can miss landing the chip in the ROM downloader - cap-charge
+        // timing on the board's reset circuit varies between resets. esptool.py copes with this by
+        // retrying the whole reset cycle (not just SYNC) several times; do the same here instead of
+        // only redoing SYNC against a chip that may have booted straight into its normal app.
+        private const int MaxBootloaderAttempts = 5;
+
         public async Task<ESP32BootLoader> StartBootloaderAsync(CancellationToken token = default)
         {
-            // Start bootloader
-            await _communicator.ExecutePinSequenceAsync(_bootloaderSequence, token).ConfigureAwait(false);
+            EspProtocolException? lastError = null;
 
-            // Check bootloader message
-            if (!await TryReadBootStartup(token).ConfigureAwait(false))
-                throw new EspProtocolException("BootLoader message not verified");
+            for (int attempt = 1; attempt <= MaxBootloaderAttempts; attempt++)
+            {
+                token.ThrowIfCancellationRequested();
+                LogProgress.Report($"Bootloader entry attempt {attempt}/{MaxBootloaderAttempts}: running pin sequence...");
 
-            // Instantiate loader and synchronize
-            var bootloader = new ESP32BootLoader(_communicator);
+                await _communicator.ExecutePinSequenceAsync(_bootloaderSequence, token).ConfigureAwait(false);
 
-            if (!await Synchronize(bootloader, token).ConfigureAwait(false))
-                throw new EspProtocolException("Failed to synchronize with bootloader");
+                var (bannerOk, bannerText) = await TryReadBootStartup(token).ConfigureAwait(false);
+                LogProgress.Report($"Received after reset: \"{bannerText}\"");
 
-            return bootloader;
+                if (!bannerOk)
+                {
+                    lastError = new EspProtocolException($"BootLoader message not verified. Last received: \"{bannerText}\"");
+                    continue;
+                }
+
+                var bootloader = new ESP32BootLoader(_communicator);
+
+                if (await Synchronize(bootloader, token).ConfigureAwait(false))
+                    return bootloader;
+
+                LogProgress.Report("SYNC did not get a reply within the retry window.");
+                lastError = new EspProtocolException("Failed to synchronize with bootloader");
+            }
+
+            throw lastError!;
         }
 
-        private async Task<bool> TryReadBootStartup(CancellationToken token)
+        // "boot:0x.." alone is printed on every reset, download mode or not - only
+        // "waiting for download" confirms the ROM actually entered the download loader.
+        // Without requiring it, a device that reset into its normal app (e.g. no working
+        // auto-reset circuit) was treated as bootloader-ready and only failed ~10s later
+        // with an opaque "Failed to synchronize" once every SYNC attempt timed out.
+        private static readonly Regex BootBannerRegex = new Regex("boot:(0x[0-9a-fA-F]+).*waiting for download", RegexOptions.Singleline);
+
+        private async Task<(bool Success, string Text)> TryReadBootStartup(CancellationToken token)
         {
+            // Bound the wait: a board that never prints anything (e.g. wrong reset polarity)
+            // must not hang this attempt forever - it should fall through to the next retry.
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(1));
+
             var buffer = new byte[4096];
-            var read = await _communicator.ReadRawAsync(buffer, token).ConfigureAwait(false);
+            int read;
+            try
+            {
+                read = await _communicator.ReadRawAsync(buffer, timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                return (false, string.Empty);
+            }
+
             if (read > 0)
             {
                 var data = new byte[read];
                 Array.Copy(buffer, data, read);
-                Regex regex = new Regex("boot:(0x[0-9a-fA-F]+)(.*waiting for download)?");
-                var result = regex.Match(Encoding.ASCII.GetString(data));
-                return result.Success;
+                string text = Encoding.ASCII.GetString(data);
+                return (BootBannerRegex.Match(text).Success, text);
             }
-            return false;
+            return (false, string.Empty);
         }
 
         private async Task<bool> Synchronize(ESP32BootLoader loader, CancellationToken token)
@@ -75,7 +121,7 @@ namespace EspDotNet.Tools
                 }
                 finally
                 {
-                    ctr.Unregister();
+                    ctr.Dispose();
                 }
             }
 

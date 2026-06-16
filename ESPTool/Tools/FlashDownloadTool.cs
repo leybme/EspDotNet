@@ -33,7 +33,7 @@ namespace EspDotNet.Tools
         public async Task ReadFlashAsync(uint address, uint size, Stream outputStream, CancellationToken token)
         {
             var flashStream = OpenFlashReadStream(address, size);
-            await flashStream.CopyToAsync(outputStream, token).ConfigureAwait(false);
+            await flashStream.CopyToAsync(outputStream, 81920, token).ConfigureAwait(false);
         }
 
         public class FlashReadStream : Stream

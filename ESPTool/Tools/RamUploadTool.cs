@@ -2,6 +2,7 @@
 using EspDotNet.Loaders;
 using EspDotNet.Loaders.SoftLoader;
 using EspDotNet.Tools.Firmware;
+using EspDotNet.Utils;
 
 namespace EspDotNet.Tools
 {
