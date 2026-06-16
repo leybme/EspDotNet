@@ -4,7 +4,9 @@
 
 [![NuGet](https://img.shields.io/nuget/v/EspDotNet.svg)](https://www.nuget.org/packages/EspDotNet)
 
-> **Looking for a GUI tool?** Check out the [ESPFlasher GUI tool on GitHub](https://github.com/KooleControls/ESPFlasher).
+Targets `net8.0` and `net472`, so it can be referenced from both modern .NET apps and .NET Framework apps (e.g. WinForms/WPF on `net472`).
+
+> **Looking for a GUI tool?** Check out the [ESPFlasher GUI tool on GitHub](https://github.com/KooleControls/ESPFlasher), or the minimal [EspFlasherWpf sample](./Samples/EspFlasherWpf) in this repo.
 
 ## Features
 
@@ -113,6 +115,12 @@ await firmwareUploadTool.UploadFirmwareAsync(firmware, default);
 var resetTool = new ResetDeviceTool(communicator, config.ResetSequence);
 await resetTool.ResetAsync();
 ```
+
+## Samples
+
+- **[EspFlasherWpf](./Samples/EspFlasherWpf)** – a small `net472` WPF app that flashes a `firmware.bin` to an ESP32-C3/S3 board: pick a COM port, pick the `.bin`, set the flash offset (defaults to `0x10000`), and watch progress/log output.
+
+  Boards using the ESP32-C3/S3's built-in USB-Serial-JTAG peripheral (no external CP2102/CH340 bridge) need a different DTR/RTS reset sequence than the classic external-bridge auto-reset circuit – the peripheral latches "enter download mode" from the DTR/RTS edge sequence itself, rather than sampling a GPIO9 strap pin at the moment reset is released. The sample's [`BootloaderResetSequences.cs`](./Samples/EspFlasherWpf/BootloaderResetSequences.cs) tries a few known sequences in turn; see the comments there if your board needs yet another variant.
 
 ## License
 
